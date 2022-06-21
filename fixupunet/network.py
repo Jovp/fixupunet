@@ -132,10 +132,7 @@ class FixUpUnet(nn.Module):
         for i, layer in enumerate(self.down_layers):
             x = layer(x)
 
-            if isinstance(layer, FixupResidualChain) or (
-                isinstance(layer, torch.jit.RecursiveScriptModule)
-                and layer.original_name == "FixupResidualChain"
-            ):
+            if i % 2 == 0:
                 skips.append(x)
 
         for layer in self.bottleneck_layers:
@@ -144,11 +141,8 @@ class FixUpUnet(nn.Module):
         for i, layer in enumerate(self.up_layers):
             x = layer(x)
 
-            if isinstance(layer, torch.nn.Upsample) or (
-                isinstance(layer, torch.jit.RecursiveScriptModule)
-                and layer.original_name == "Upsample"
-            ):
-                if self.skip:
+            if self.skip:
+                if i % 3 == 0:
                     x = torch.cat([x, skips.pop()], dim=1)
 
         return self.out_conv(x)
