@@ -296,8 +296,8 @@ class FixupResidualChain(nn.Module):
         activation="relu",
         last_activation="relu",
         padding_mode="reflect",
-        attention=0,
         depth_init=None,
+        single_padding=False,
     ):
         super(FixupResidualChain, self).__init__()
 
@@ -310,20 +310,21 @@ class FixupResidualChain(nn.Module):
         assert (
             isinstance(depth, int) and depth > 0 and depth < 16
         ), "Depth should be a positive integer lower than 16"
-        assert (
-            attention < depth
-        ), "Number of attention layers as to be smaller than depth"
 
         self.depth = depth
         if depth_init is not None:
             self.depth_init = depth_init
         else:
             self.depth_init = self.depth
-        self.attention = attention
 
         # Core processing layers
         common_layers = OrderedDict()
-        for lvl in range(0, depth - attention):
+
+        if single_padding:
+            hks = (ksize - 1) // 2
+            p = hks * 2 * depth
+            common_layers["early_pad"] = torch.nn.ReflectionPad2d(padding=(p, p, p, p))
+        for lvl in range(0, depth):
 
             if lvl == depth - 1:
                 activation2 = last_activation
@@ -338,55 +339,16 @@ class FixupResidualChain(nn.Module):
                     activation=activation,
                     activation2=activation2,
                     padding_mode=padding_mode,
-                )
-            )
-
-        residual_layers = OrderedDict()
-        attention_layers = OrderedDict()
-        for lvl in range(depth - attention, depth):
-
-            if lvl == depth - 1:
-                activation2 = last_activation
-            else:
-                activation2 = activation
-
-            blockname = "resblock{}".format(lvl)
-            residual_layers[blockname] = torch.jit.script(
-                FixupBasicBlock(
-                    n_features,
-                    ksize=ksize,
-                    activation=activation,
-                    activation2=activation2,
-                    padding_mode=padding_mode,
-                )
-            )
-
-            if lvl == depth - 1:
-                activation2 = "sigmoid"
-            else:
-                activation2 = activation
-
-            blockname = "attblock{}".format(lvl)
-            attention_layers[blockname] = torch.jit.script(
-                FixupBasicBlock(
-                    n_features,
-                    ksize=ksize,
-                    activation=activation,
-                    activation2=activation2,
-                    padding_mode=padding_mode,
+                    padding=not single_padding,
                 )
             )
 
         self.com_net = nn.Sequential(common_layers)
-        self.res_net = nn.Sequential(residual_layers)
-        self.att_net = nn.Sequential(attention_layers)
 
         self._reset_weights()
 
     def _reset_weights(self):
-        for m in itertools.chain(
-            self.com_net.modules(), self.res_net.modules(), self.att_net.modules()
-        ):
+        for m in itertools.chain(self.com_net.modules()):
             if isinstance(m, FixupBasicBlock) or (
                 isinstance(m, torch.jit.RecursiveScriptModule)
                 and m.original_name == "FixupBasicBlock"
@@ -407,8 +369,6 @@ class FixupResidualChain(nn.Module):
 
     def forward(self, x):
         x = self.com_net(x)
-        if self.attention > 0:
-            x = self.res_net(x) * self.att_net(x)
         return x
 
 
