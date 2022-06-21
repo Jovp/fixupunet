@@ -2,7 +2,7 @@ from __future__ import absolute_import
 
 from torch import nn
 import torch
-from modules import FixupConvModule, FixupResidualChain
+from .modules import FixupConvModule, FixupResidualChain
 
 
 class FixUpUnet(nn.Module):
@@ -30,7 +30,7 @@ class FixUpUnet(nn.Module):
     """
 
     def __init__(self, cfg):
-        super(UnetFixUp, self).__init__()
+        super(FixUpUnet, self).__init__()
 
         feat = cfg.feat
         self.skip = cfg.skips
