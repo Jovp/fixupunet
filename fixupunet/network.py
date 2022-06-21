@@ -1,12 +1,11 @@
-import sys
+from __future__ import absolute_import
 
-sys.path.insert(0, "./")
 from torch import nn
 import torch
-from .modules import FixupConvModule, FixupResidualChain
+from modules import FixupConvModule, FixupResidualChain
 
 
-class UnetFixUp(nn.Module):
+class FixUpUnet(nn.Module):
     """
     Unet using residual blocks and residual chains without any normalization layer.
     Example of cfg to instanciate the network:
