@@ -72,7 +72,10 @@ class FixUpUnet(nn.Module):
         self.bottleneck_layers = nn.ModuleList()
         feat_curr = min(2 ** (i + 1) * feat, max_feat)
         layer = FixupResidualChain(
-            feat_curr, cfg.bottleneck_layers, 3, cfg.act_fn, attention=0
+            feat_curr,
+            cfg.bottleneck_layers,
+            3,
+            cfg.act_fn,
         )
         if cfg.script_submodules:
             layer = torch.jit.script(layer)
