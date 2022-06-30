@@ -4,7 +4,7 @@ Unet Implementation using residual block and fixup initialization
  
 Unet using residual blocks and residual chains without any normalization layer.
     Example of cfg to instanciate the network:
-    `
+    ```
     from omegaconf import DictConfig
     cfg = DictConfig(
         {
@@ -20,4 +20,5 @@ Unet using residual blocks and residual chains without any normalization layer.
             "max_feat": 256, #We doubles features when downsampling but cap it to this value
             "script_submodules": True, #Scripting for faster more efficient network
         }
-    )`
+    )
+    ```
