@@ -1,6 +1,18 @@
 # UnetFixUp
 Unet Implementation using residual block and fixup initialization
  ----
+
+Please cite this paper if you are using this code into your project as it was developped for it.
+```
+@article{griffiths2022outcast,
+    title={OutCast: Single Image Relighting with Cast Shadows},
+    author={Griffiths, David and Ritschel, Tobias and Philip, Julien},
+    journal={Computer Graphics Forum},
+    volume={43},
+    year={2022},
+    organization={Wiley Online Library}
+}
+```
  
 Unet using residual blocks and residual chains without any normalization layer.
 Example of cfg to instanciate the network:
