@@ -18,6 +18,12 @@ norm_map_2d = {
     "none": None,
 }
 
+norm_map_3d = {
+    "batch": nn.BatchNorm3d,
+    "instance": nn.InstanceNorm3d,
+    "none": None,
+}
+
 
 class FixupConvModule(nn.Module):
     """Basic convolution module with conv + norm(optional) + activation(optional).
@@ -44,6 +50,7 @@ class FixupConvModule(nn.Module):
         padding_mode="reflect",
         use_bias=False,
         sn=False,
+        dim=2,
     ):
         super(FixupConvModule, self).__init__()
 
@@ -56,14 +63,19 @@ class FixupConvModule(nn.Module):
         assert (
             isinstance(ksize, int) and ksize > 0
         ), "Kernel size should be a positive integer got {}".format(ksize)
+        assert isinstance(dim, int) and (
+            dim == 2 or dim == 3
+        ), "Dimension (dim) should be an integer equal to 2 or 3 got {}".format(ksize)
 
         layers = OrderedDict()
 
         padding = (ksize - 1) // 2 if pad else 0
         padding_mode = padding_mode if pad else "zeros"
 
+        convFn = getattr(nn, "Conv" + str(dim) + "d")
+
         if not sn:
-            layers["conv"] = nn.Conv2d(
+            layers["conv"] = convFn(
                 n_in,
                 n_out,
                 ksize,
@@ -74,7 +86,7 @@ class FixupConvModule(nn.Module):
             )
         else:
             layers["conv"] = torch.nn.utils.spectral_norm(
-                nn.Conv2d(
+                convFn(
                     n_in,
                     n_out,
                     ksize,
@@ -86,7 +98,10 @@ class FixupConvModule(nn.Module):
             )
 
         if norm_layer != "none":
-            layers["norm"] = norm_map_2d[norm_layer](n_out)
+            if dim == 2:
+                layers["norm"] = norm_map_2d[norm_layer](n_out)
+            elif dim == 3:
+                layers["norm"] = norm_map_3d[norm_layer](n_out)
 
         if activation != "none":
             layers["activation"] = act_fn_map[activation]
@@ -213,16 +228,20 @@ class FixupBasicBlock(nn.Module):
         padding_mode="reflect",
         activation="relu",
         activation2=None,
+        dim=2,
+        script_submodules=False,
     ):
         super(FixupBasicBlock, self).__init__()
+        scriptFn = torch.jit.script if script_submodules else lambda x: x
 
         self.padding = padding
         self.hks = (ksize - 1) // 2
+        self.dim = dim
 
         if activation2 is None:
             activation2 = activation
 
-        self.conv1 = torch.jit.script(
+        self.conv1 = scriptFn(
             FixupConvModule(
                 n_features,
                 n_features,
@@ -232,6 +251,7 @@ class FixupBasicBlock(nn.Module):
                 activation="none",
                 norm_layer="none",
                 padding_mode=padding_mode,
+                dim=dim,
             )
         )
 
@@ -240,7 +260,7 @@ class FixupBasicBlock(nn.Module):
             activation2 = activation
         self.activation2 = act_fn_map[activation2]
 
-        self.conv2 = torch.jit.script(
+        self.conv2 = scriptFn(
             FixupConvModule(
                 n_features,
                 n_features,
@@ -250,6 +270,7 @@ class FixupBasicBlock(nn.Module):
                 activation="none",
                 norm_layer="none",
                 padding_mode=padding_mode,
+                dim=dim,
             )
         )
 
@@ -263,9 +284,18 @@ class FixupBasicBlock(nn.Module):
         if self.padding:
             identity = x
         else:
-            identity = x[
-                ..., 2 * self.hks : -2 * self.hks, 2 * self.hks : -2 * self.hks
-            ]
+            if self.dim == 2:
+                identity = x[
+                    ..., 2 * self.hks : -2 * self.hks, 2 * self.hks : -2 * self.hks
+                ]
+            else:
+                identity = x[
+                    ...,
+                    2 * self.hks : -2 * self.hks,
+                    2 * self.hks : -2 * self.hks,
+                    2 * self.hks : -2 * self.hks,
+                ]
+
         out = x + self.bias0
         out = self.conv1(out)
         out = out + self.bias1
@@ -298,8 +328,12 @@ class FixupResidualChain(nn.Module):
         padding_mode="reflect",
         depth_init=None,
         single_padding=False,
+        dim=2,
+        script_submodules=False,
     ):
         super(FixupResidualChain, self).__init__()
+
+        scriptFn = torch.jit.script if script_submodules else lambda x: x
 
         assert (
             isinstance(n_features, int) and n_features > 0
@@ -320,10 +354,12 @@ class FixupResidualChain(nn.Module):
         # Core processing layers
         common_layers = OrderedDict()
 
+        padFn = getattr(nn, "ReflectionPad" + str(dim) + "d")
+
         if single_padding:
             hks = (ksize - 1) // 2
             p = hks * 2 * depth
-            common_layers["early_pad"] = torch.nn.ReflectionPad2d(padding=(p, p, p, p))
+            common_layers["early_pad"] = padFn(padding=(p,) * (2 * dim))
         for lvl in range(0, depth):
 
             if lvl == depth - 1:
@@ -332,7 +368,7 @@ class FixupResidualChain(nn.Module):
                 activation2 = activation
 
             blockname = "resblock{}".format(lvl)
-            common_layers[blockname] = torch.jit.script(
+            common_layers[blockname] = scriptFn(
                 FixupBasicBlock(
                     n_features,
                     ksize=ksize,
@@ -340,14 +376,16 @@ class FixupResidualChain(nn.Module):
                     activation2=activation2,
                     padding_mode=padding_mode,
                     padding=not single_padding,
+                    dim=dim,
+                    script_submodules=script_submodules,
                 )
             )
 
         self.com_net = nn.Sequential(common_layers)
 
-        self._reset_weights()
+        self._reset_weights(dim)
 
-    def _reset_weights(self):
+    def _reset_weights(self, dim):
         for m in itertools.chain(self.com_net.modules()):
             if isinstance(m, FixupBasicBlock) or (
                 isinstance(m, torch.jit.RecursiveScriptModule)
@@ -360,7 +398,7 @@ class FixupResidualChain(nn.Module):
                         2
                         / (
                             m.conv1.net.conv.weight.shape[0]
-                            * np.prod(m.conv1.net.conv.weight.shape[2:])
+                            * np.prod(m.conv1.net.conv.weight.shape[-dim:])
                         )
                     )
                     * self.depth_init ** (-0.5),

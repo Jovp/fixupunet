@@ -24,6 +24,7 @@ class FixUpUnet(nn.Module):
             "out_act_fn": "none",
             "max_feat": 256,
             "script_submodules": True,
+            "dim": 2,
         }
     )
 
@@ -39,7 +40,9 @@ class FixUpUnet(nn.Module):
 
         i = -1
 
-        layer = FixupConvModule(cfg.in_feat, cfg.feat, 3, 1, True, "none", cfg.act_fn)
+        layer = FixupConvModule(
+            cfg.in_feat, cfg.feat, 3, 1, True, "none", cfg.act_fn, dim=cfg.dim
+        )
         if cfg.script_submodules:
             layer = torch.jit.script(layer)
         self.in_conv = layer
@@ -56,6 +59,7 @@ class FixUpUnet(nn.Module):
                 cfg.act_fn,
                 depth_init=2 * cfg.identity_layers,
                 single_padding=(i < 3),
+                dim=cfg.dim,
             )
             if cfg.script_submodules:
                 layer = torch.jit.script(layer)
@@ -63,7 +67,15 @@ class FixUpUnet(nn.Module):
 
             # Downsampling convolution
             layer = FixupConvModule(
-                feat_curr, feat_next, 4, 2, True, "none", "none", use_bias=True
+                feat_curr,
+                feat_next,
+                4,
+                2,
+                True,
+                "none",
+                "none",
+                use_bias=True,
+                dim=cfg.dim,
             )
             if cfg.script_submodules:
                 layer = torch.jit.script(layer)
@@ -72,22 +84,20 @@ class FixUpUnet(nn.Module):
         self.bottleneck_layers = nn.ModuleList()
         feat_curr = min(2 ** (i + 1) * feat, max_feat)
         layer = FixupResidualChain(
-            feat_curr,
-            cfg.bottleneck_layers,
-            3,
-            cfg.act_fn,
+            feat_curr, cfg.bottleneck_layers, 3, cfg.act_fn, dim=cfg.dim
         )
         if cfg.script_submodules:
             layer = torch.jit.script(layer)
         self.bottleneck_layers.append(layer)
 
         self.up_layers = nn.ModuleList()
+        upsample_mode = "bilinear" if cfg.dim == 2 else "trilinear"
         for i in range(cfg.down_layers, 0, -1):
             feat_curr = min(2**i * feat, max_feat)
             feat_next = min(2 ** (i - 1) * feat, max_feat)
             # Upsample
             self.up_layers.append(
-                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+                nn.Upsample(scale_factor=2, mode=upsample_mode, align_corners=False)
             )
             # Merge skip and upsample
             if self.skip:
@@ -100,6 +110,7 @@ class FixUpUnet(nn.Module):
                     "none",
                     "none",
                     use_bias=True,
+                    dim=cfg.dim,
                 )
                 if cfg.script_submodules:
                     layer = torch.jit.script(layer)
@@ -112,13 +123,22 @@ class FixUpUnet(nn.Module):
                 cfg.act_fn,
                 depth_init=2 * cfg.identity_layers,
                 single_padding=(i - 1 < 3),
+                dim=cfg.dim,
             )
             if cfg.script_submodules:
                 layer = torch.jit.script(layer)
             self.up_layers.append(layer)
 
         layer = FixupConvModule(
-            feat, cfg.out_feat, 3, 1, True, "none", cfg.out_act_fn, use_bias=True
+            feat,
+            cfg.out_feat,
+            3,
+            1,
+            True,
+            "none",
+            cfg.out_act_fn,
+            use_bias=True,
+            dim=cfg.dim,
         )
         if cfg.script_submodules:
             layer = torch.jit.script(layer)

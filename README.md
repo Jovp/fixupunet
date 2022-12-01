@@ -31,6 +31,7 @@ Example of cfg to instanciate the network:
             "out_act_fn": "none", #Activation after the final layer, usually none
             "max_feat": 256, #We doubles features when downsampling but cap it to this value
             "script_submodules": True, #Scripting for faster more efficient network
+            "dim": 2, #Should be 2 or 3, for a 2D or 3D Unet
         }
     )
 ```
