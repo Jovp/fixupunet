@@ -73,7 +73,7 @@ class FixUpUnet(nn.Module):
                 2,
                 True,
                 "none",
-                "none",
+                cfg.act_fn,
                 use_bias=True,
                 dim=cfg.dim,
             )
@@ -108,7 +108,7 @@ class FixUpUnet(nn.Module):
                     1,
                     False,
                     "none",
-                    "none",
+                    cfg.act_fn,
                     use_bias=True,
                     dim=cfg.dim,
                 )

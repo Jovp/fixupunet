@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="fixupunet",
-    version="0.0.2",
+    version="0.0.3",
     author="Julien Philip",
     author_email="juphilip@adobe.com",
     description="Pytorch implementation of a modern unet using fixup initialization",

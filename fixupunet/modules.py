@@ -107,7 +107,7 @@ class FixupConvModule(nn.Module):
             layers["activation"] = act_fn_map[activation]
 
         # Initialize parameters
-        _init_fc_or_conv(layers["conv"], activation)
+        _init_fc_or_conv(layers["conv"], activation, dim)
 
         self.net = nn.Sequential(layers)
 
@@ -397,7 +397,7 @@ class FixupResidualChain(nn.Module):
                     std=np.sqrt(
                         2
                         / (
-                            m.conv1.net.conv.weight.shape[0]
+                            m.conv1.net.conv.weight.shape[1]
                             * np.prod(m.conv1.net.conv.weight.shape[-dim:])
                         )
                     )
@@ -410,14 +410,21 @@ class FixupResidualChain(nn.Module):
         return x
 
 
-def _init_fc_or_conv(fc_conv, activation):
+def _init_fc_or_conv(fc_conv, activation, dim):
     gain = 1.0
     if activation != "none":
         try:
             gain = nn.init.calculate_gain(activation)
         except:
             print("Warning using gain of ", gain, " for activation: ", activation)
-    nn.init.xavier_uniform_(fc_conv.weight, gain)
+    nn.init.normal_(
+        fc_conv.weight,
+        mean=0,
+        std=np.sqrt(
+            (gain**2)
+            / (fc_conv.weight.shape[1] * np.prod(fc_conv.weight.shape[-dim:]))
+        ),
+    )
     if fc_conv.bias is not None:
         nn.init.constant_(fc_conv.bias, 0.0)
 
