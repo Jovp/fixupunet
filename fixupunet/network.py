@@ -99,22 +99,22 @@ class FixUpUnet(nn.Module):
             self.up_layers.append(
                 nn.Upsample(scale_factor=2, mode=upsample_mode, align_corners=False)
             )
-            # Merge skip and upsample
-            if self.skip:
-                layer = FixupConvModule(
-                    feat_next + feat_curr,
-                    feat_next,
-                    1,
-                    1,
-                    False,
-                    "none",
-                    cfg.act_fn,
-                    use_bias=True,
-                    dim=cfg.dim,
-                )
-                if cfg.script_submodules:
-                    layer = torch.jit.script(layer)
-                self.up_layers.append(layer)
+            # Eventually merge skip and upsample
+            feat_inter = feat_next + feat_curr if self.skip else feat_curr
+            layer = FixupConvModule(
+                feat_inter,
+                feat_next,
+                1,
+                1,
+                False,
+                "none",
+                cfg.act_fn,
+                use_bias=True,
+                dim=cfg.dim,
+            )
+            if cfg.script_submodules:
+                layer = torch.jit.script(layer)
+            self.up_layers.append(layer)
             # Residual chain
             layer = FixupResidualChain(
                 feat_next,
